@@ -13,7 +13,9 @@ TONE_DEFINITIONS = {
 }
 
 # Cloud ke liye API key streamlit secrets se lega
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_default")
+import streamlit as st
+# Secret se key lena hai (Cloud ke liye)
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "gsk_default")
 
 st.set_page_config(page_title="Email Tone Adapter", page_icon="📧", layout="wide")
 
