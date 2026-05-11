@@ -1,9 +1,18 @@
 import streamlit as st
 import os
 from groq import Groq
-from app.utils.tone_lexicon import TONE_DEFINITIONS
 
-# Cloud ke liye API key streamlit secrets se lega, local ke liye .env se
+# --- TONE DICTIONARY (Directly added here so no folder import is needed) ---
+TONE_DEFINITIONS = {
+    "formal": {"description": "Professional, respectful", "transition_words": ["furthermore", "moreover"], "avoid_words": ["hey", "gonna"]},
+    "friendly": {"description": "Warm, approachable", "transition_words": ["also", "plus"], "avoid_words": ["hereby", "pursuant"]},
+    "urgent": {"description": "Time-sensitive, direct", "transition_words": ["immediately", "urgently"], "avoid_words": ["whenever"]},
+    "apologetic": {"description": "Sincere", "transition_words": ["unfortunately", "regrettably"], "avoid_words": ["whatever"]},
+    "persuasive": {"description": "Convincing", "transition_words": ["imagine", "opportunity"], "avoid_words": ["maybe"]},
+    "neutral": {"description": "Balanced", "transition_words": ["also", "however"], "avoid_words": []}
+}
+
+# Cloud ke liye API key streamlit secrets se lega
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_default")
 
 st.set_page_config(page_title="Email Tone Adapter", page_icon="📧", layout="wide")
