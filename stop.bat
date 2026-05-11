@@ -1,0 +1,1 @@
+taskkill /f /im uvicorn.exe & taskkill /f /im streamlit.exe
