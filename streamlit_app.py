@@ -1,8 +1,12 @@
-import streamlit as st  # type: ignore[import-not-found]
-import requests  # type: ignore[import-not-found]
+import streamlit as st
+import os
+from groq import Groq
+from app.utils.tone_lexicon import TONE_DEFINITIONS
+
+# Cloud ke liye API key streamlit secrets se lega, local ke liye .env se
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_default")
 
 st.set_page_config(page_title="Email Tone Adapter", page_icon="📧", layout="wide")
-API_URL = "http://localhost:8000/api/v1"
 
 TONE_OPTIONS = {
     "formal": "Formal - Professional, respectful",
@@ -13,6 +17,36 @@ TONE_OPTIONS = {
     "neutral": "Neutral - Balanced"
 }
 
+# Helper function: AI se email generate karwao
+def generate_email_logic(points, recipient, sender, tone, context, length):
+    client = Groq(api_key=GROQ_API_KEY)
+    tone_config = TONE_DEFINITIONS.get(tone, TONE_DEFINITIONS["neutral"])
+    
+    sys_msg = f"You are an expert {tone} email writer. Guidelines: {tone_config['description']}. Use transitions: {', '.join(tone_config['transition_words'])}. Avoid: {', '.join(tone_config['avoid_words'])}."
+    points_str = '\n'.join(f"- {p}" for p in points)
+    user_msg = f"Write a {length} {tone} email.\nTo: {recipient}\nFrom: {sender}\nPoints:\n{points_str}\nContext: {context or 'None'}\n\nFormat:\nSubject: [subject]\n[Email body]"
+    
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}],
+        max_tokens=1000, temperature=0.7
+    )
+    return response.choices[0].message.content
+
+# Helper function: Tone adapt karo
+def adapt_tone_logic(email_text, target_tone):
+    client = Groq(api_key=GROQ_API_KEY)
+    tone_config = TONE_DEFINITIONS.get(target_tone, TONE_DEFINITIONS["neutral"])
+    sys_msg = f"Rewrite this email to be {target_tone}. Guidelines: {tone_config['description']}. Keep ALL facts."
+    
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": email_text}],
+        max_tokens=1000, temperature=0.7
+    )
+    return response.choices[0].message.content
+
+# ---------------- UI CODE ----------------
 st.title("📧 Email Tone Adaptation System")
 tab1, tab2, tab3 = st.tabs(["✍️ Generate", "🔄 Compare", "🎯 Adapt"])
 
@@ -37,13 +71,20 @@ with tab1:
         else:
             with st.spinner("Generating..."):
                 try:
-                    payload = {"key_points": points, "recipient": recipient, "sender_name": sender, "tone": selected_tone, "context": context, "email_length": length, "include_subject": True}
-                    res = requests.post(f"{API_URL}/generate", json=payload)
-                    result = res.json()
+                    raw_text = generate_email_logic(points, recipient, sender, selected_tone, context, length)
+                    subject = "No Subject"
+                    if "Subject:" in raw_text:
+                        parts = raw_text.split("Subject:", 1)
+                        sub_parts = parts[1].split("\n", 1)
+                        subject = sub_parts[0].strip()
+                        body = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+                    else:
+                        body = raw_text.strip()
+                    
                     st.success("Done!")
-                    if result.get("subject"): st.text_input("Subject", result["subject"])
-                    st.text_area("Body", result["body"], height=300)
-                    st.metric("Words", result["word_count"])
+                    st.text_input("Subject", subject)
+                    st.text_area("Body", body, height=300)
+                    st.metric("Words", len(body.split()))
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -58,15 +99,19 @@ with tab2:
             with st.spinner():
                 try:
                     pts = [p.strip() for p in kp2.split('\n') if p.strip()]
-                    res = requests.post(f"{API_URL}/generate/batch", json={"key_points": pts, "recipient": r2, "sender_name": s2, "tones": tones2})
-                    result = res.json()
                     cols = st.columns(len(tones2))
                     for idx, t in enumerate(tones2):
                         with cols[idx]:
                             st.subheader(t.title())
-                            em = result["emails"].get(t, {})
-                            if em.get("subject"): st.caption(f"**Sub:** {em['subject']}")
-                            st.text_area("Body", em.get("body",""), height=400, key=f"c{t}")
+                            raw_text = generate_email_logic(pts, r2, s2, t, None, "medium")
+                            if "Subject:" in raw_text:
+                                parts = raw_text.split("Subject:", 1)
+                                sub_parts = parts[1].split("\n", 1)
+                                st.caption(f"**Sub:** {sub_parts[0].strip()}")
+                                body = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+                            else:
+                                body = raw_text.strip()
+                            st.text_area("Body", body, height=400, key=f"c{t}")
                 except Exception as e: st.error(str(e))
 
 with tab3:
@@ -77,9 +122,8 @@ with tab3:
         else:
             with st.spinner():
                 try:
-                    res = requests.post(f"{API_URL}/adapt-tone", json={"email_text": txt, "target_tone": t3})
-                    r = res.json()
+                    new_body = adapt_tone_logic(txt, t3)
                     c1, c2 = st.columns(2)
                     with c1: st.text_area("Original", txt, height=300)
-                    with c2: st.text_area("Adapted", r["body"], height=300)
+                    with c2: st.text_area("Adapted", new_body, height=300)
                 except Exception as e: st.error(str(e))
